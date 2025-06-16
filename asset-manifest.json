@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/literature-deduplication/static/css/main.e6c13ad2.css",
+    "main.js": "/literature-deduplication/static/js/main.822928a8.js",
+    "static/js/488.139d880f.chunk.js": "/literature-deduplication/static/js/488.139d880f.chunk.js",
+    "index.html": "/literature-deduplication/index.html",
+    "main.e6c13ad2.css.map": "/literature-deduplication/static/css/main.e6c13ad2.css.map",
+    "main.822928a8.js.map": "/literature-deduplication/static/js/main.822928a8.js.map",
+    "488.139d880f.chunk.js.map": "/literature-deduplication/static/js/488.139d880f.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.e6c13ad2.css",
+    "static/js/main.822928a8.js"
+  ]
+}
