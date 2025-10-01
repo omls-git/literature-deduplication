@@ -505,8 +505,7 @@ function App() {
                 </Grid>
               </Grid>
             </Box>
-
-            {/* Uploaded Files Section */}
+         {/* Uploaded Files Section */}
             <div>
               <h3>Uploaded Files:</h3>
               {uploadedFiles.length > 0 ? (
