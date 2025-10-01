@@ -18,11 +18,11 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [workbook, setWorkbook] = useState(null);
-  const [removedPMIDs, setRemovedPMIDs] = useState([]); // State to store removed PMIDs
-  const [todaysRemovedPMIDs, setTodaysRemovedPMIDs] = useState([]); // State to store today's removed PMIDs
-  const [totalUniques, setTotalUniques] = useState(0);
-  const [combinedData, setCombinedData] = useState([]); // State to store combined data
-  const [totalUniqueHits, setTotalUniqueHits] = useState([]);
+  //const [removedPMIDs, setRemovedPMIDs] = useState([]); // State to store removed PMIDs
+  //const [todaysRemovedPMIDs, setTodaysRemovedPMIDs] = useState([]); // State to store today's removed PMIDs
+  //const [totalUniques, setTotalUniques] = useState(0);
+  //const [combinedData, setCombinedData] = useState([]); // State to store combined data
+  //const [totalUniqueHits, setTotalUniqueHits] = useState([]);
   const [todaysCleanedUniques, setTodaysCleanedUniques] = useState([]);
   const [todaysRemovedDuplicates, setTodaysRemovedDuplicates] = useState([]);
   const[removedTodayPMIS, setTodayRemovedPMIDs]= useState([])
@@ -410,62 +410,62 @@ function App() {
   };
 
   // Last dated duplicates
-  const getLastDatedDuplicates = () => {
-    if (!workbook) {
-      alert("Please upload or process the Master Tracker file first.");
-      return;
-    }
+  // const getLastDatedDuplicates = () => {
+  //   if (!workbook) {
+  //     alert("Please upload or process the Master Tracker file first.");
+  //     return;
+  //   }
 
-    const duplicateSheet = workbook.Sheets["Duplicate Hits"];
-    if (!duplicateSheet) {
-      alert("Duplicate Hits sheet not found.");
-      return;
-    }
+  //   const duplicateSheet = workbook.Sheets["Duplicate Hits"];
+  //   if (!duplicateSheet) {
+  //     alert("Duplicate Hits sheet not found.");
+  //     return;
+  //   }
 
-    const allRows = XLSX.utils.sheet_to_json(duplicateSheet, { defval: "" });
-    if (allRows.length === 0) return;
+  //   const allRows = XLSX.utils.sheet_to_json(duplicateSheet, { defval: "" });
+  //   if (allRows.length === 0) return;
 
-    const maxDate = allRows.reduce((max, row) => {
-      const rowDate = parseDate(row["Processed Date"]);
-      return rowDate > max ? rowDate : max;
-    }, new Date(0));
+  //   const maxDate = allRows.reduce((max, row) => {
+  //     const rowDate = parseDate(row["Processed Date"]);
+  //     return rowDate > max ? rowDate : max;
+  //   }, new Date(0));
 
-    const lastDatedRows = allRows.filter(
-      (row) => parseDate(row["Processed Date"]).getTime() === maxDate.getTime()
-    );
+  //   const lastDatedRows = allRows.filter(
+  //     (row) => parseDate(row["Processed Date"]).getTime() === maxDate.getTime()
+  //   );
 
-    setCombinedData(lastDatedRows);
-    alert(`Total duplicates: ${lastDatedRows.length}`);
-  };
+  //   setCombinedData(lastDatedRows);
+  //   alert(`Total duplicates: ${lastDatedRows.length}`);
+  // };
 
-  // Last dated uniques
-  const getLastDatedUniques = () => {
-    if (!workbook) {
-      alert("Please upload or process the Master Tracker file first.");
-      return;
-    }
+  // // Last dated uniques
+  // const getLastDatedUniques = () => {
+  //   if (!workbook) {
+  //     alert("Please upload or process the Master Tracker file first.");
+  //     return;
+  //   }
 
-    const uniqueSheet = workbook.Sheets["Unique Hits"];
-    if (!uniqueSheet) {
-      alert("Unique Hits sheet not found.");
-      return;
-    }
+  //   const uniqueSheet = workbook.Sheets["Unique Hits"];
+  //   if (!uniqueSheet) {
+  //     alert("Unique Hits sheet not found.");
+  //     return;
+  //   }
 
-    const allRows = XLSX.utils.sheet_to_json(uniqueSheet, { defval: "" });
-    if (allRows.length === 0) return;
+  //   const allRows = XLSX.utils.sheet_to_json(uniqueSheet, { defval: "" });
+  //   if (allRows.length === 0) return;
 
-    const maxDate = allRows.reduce((max, row) => {
-      const rowDate = parseDate(row["Received Date (DD MMM YYYY)"]);
-      return rowDate > max ? rowDate : max;
-    }, new Date(0));
+  //   const maxDate = allRows.reduce((max, row) => {
+  //     const rowDate = parseDate(row["Received Date (DD MMM YYYY)"]);
+  //     return rowDate > max ? rowDate : max;
+  //   }, new Date(0));
 
-    const lastDatedRows = allRows.filter(
-      (row) => parseDate(row["Received Date (DD MMM YYYY)"]).getTime() === maxDate.getTime()
-    );
+  //   const lastDatedRows = allRows.filter(
+  //     (row) => parseDate(row["Received Date (DD MMM YYYY)"]).getTime() === maxDate.getTime()
+  //   );
 
-    setTotalUniqueHits(lastDatedRows);
-    alert(`Total Uniques: ${lastDatedRows.length}`);
-  };
+  //   setTotalUniqueHits(lastDatedRows);
+  //   alert(`Total Uniques: ${lastDatedRows.length}`);
+  // };
 
 
   const downloadCsvData = () => {
