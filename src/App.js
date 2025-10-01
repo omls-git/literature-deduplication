@@ -23,6 +23,10 @@ function App() {
   const [totalUniques, setTotalUniques] = useState(0);
   const [combinedData, setCombinedData] = useState([]); // State to store combined data
   const [totalUniqueHits, setTotalUniqueHits] = useState([]);
+  const [todaysCleanedUniques, setTodaysCleanedUniques] = useState([]);
+  const [todaysRemovedDuplicates, setTodaysRemovedDuplicates] = useState([]);
+  const[removedTodayPMIS, setTodayRemovedPMIDs]= useState([])
+
 
 
 
@@ -54,27 +58,27 @@ function App() {
 
   // Detect Duplicates
   const detectDuplicates = () => {
-  const pmidCount = {};
- // const seenFirstInstance = new Set();
-  const duplicates = [];
-  const nonDuplicates = [];
+    const pmidCount = {};
+    // const seenFirstInstance = new Set();
+    const duplicates = [];
+    const nonDuplicates = [];
 
-  csvData.forEach((row) => {
-    const pmid = row.PMID?.toString().trim();
-    if (!pmid) return;
+    csvData.forEach((row) => {
+      const pmid = row.PMID?.toString().trim();
+      if (!pmid) return;
 
-    pmidCount[pmid] = (pmidCount[pmid] || 0) + 1;
+      pmidCount[pmid] = (pmidCount[pmid] || 0) + 1;
 
-    if (pmidCount[pmid] === 1) {
-      nonDuplicates.push(row); // first time seeing this PMID
-    } else {
-      duplicates.push(row); // second or more = duplicate
-    }
-  });
+      if (pmidCount[pmid] === 1) {
+        nonDuplicates.push(row); // first time seeing this PMID
+      } else {
+        duplicates.push(row); // second or more = duplicate
+      }
+    });
 
-  setDuplicateRows(duplicates);         // should be 15 now
-  setNonDuplicateRows(nonDuplicates);   // should be 133
-};
+    setDuplicateRows(duplicates);         // should be 15 now
+    setNonDuplicateRows(nonDuplicates);   // should be 133
+  };
 
   // Export to CSV
   const exportToCsv = (data, filename) => {
@@ -274,203 +278,200 @@ function App() {
 
   const handleDownloadUpdated = () => {
     if (!workbook) {
-      alert("Please upload the Master Tracker file first.");
+      alert("Please upload or process the Master Tracker file first.");
       return;
     }
 
     const uniqueSheetName = "Unique Hits";
+    const duplicateSheetName = "Duplicate Hits";
     const uniqueWorksheet = workbook.Sheets[uniqueSheetName];
+    const duplicateWorksheet = workbook.Sheets[duplicateSheetName];
 
     if (!uniqueWorksheet) {
       alert("Unique Hits sheet not found in the workbook.");
       return;
     }
 
-    // Read the data from the Unique Hits sheet
-    const uniqueData = XLSX.utils.sheet_to_json(uniqueWorksheet, { defval: "" });
+    try {
+      // Read data from Unique Hits sheet
+      const uniqueData = XLSX.utils.sheet_to_json(uniqueWorksheet, { defval: "" });
 
-    // Create a map to track occurrences of each PMID
-    const pmidCount = {};
-    const today = new Date();
-    const todayFormatted = today.toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+      // Prepare today's formatted date
+      const today = new Date();
+      const todayFormatted = today.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
 
-    // Count occurrences of each PMID
-    uniqueData.forEach((row) => {
-      const pmid = row.PMID;
-      if (pmid) {
-        pmidCount[pmid] = (pmidCount[pmid] || 0) + 1;
-      }
-    });
+      const seen = new Set();
+      const cleanedData = [];
+      const duplicatesData = duplicateWorksheet
+        ? XLSX.utils.sheet_to_json(duplicateWorksheet, { defval: "" })
+        : [];
 
-    // Initialize arrays to hold removed PMIDs
-    const removedPMIDsArray = [];
-    const todaysRemovedPMIDsArray = [];
+      const removedPMIDsArray = [];
 
-    // Filter out all PMIDs that have duplicates
-    const cleanedData = uniqueData.filter((row) => {
-      const pmid = row.PMID;
-      // Check if the PMID occurs more than once
-      if (pmidCount[pmid] > 1) {
-        // Add to removed PMIDs
-        removedPMIDsArray.push(pmid);
-        // Check if it's today's PMID
-        if (row["Received Date (DD MMM YYYY)"] === todayFormatted) {
-          todaysRemovedPMIDsArray.push(row); // Store the complete row
+      uniqueData.forEach((row) => {
+        const pmid = row.PMID ? String(row.PMID).trim() : "";
+        if (!pmid) return; // skip empty PMIDs
+
+        if (!seen.has(pmid)) {
+          seen.add(pmid);
+          cleanedData.push({
+            SNO: cleanedData.length + 1,
+            "Received Date (DD MMM YYYY)":
+              row["Received Date (DD MMM YYYY)"] || todayFormatted,
+            PMID: pmid,
+          });
+        } else {
+          // duplicate -> remove from Unique Hits and add to Duplicate Hits
+          removedPMIDsArray.push(pmid);
+          duplicatesData.push({
+            ...row,
+            "Processed Date": todayFormatted,
+          });
         }
-        return false; // Remove this row
+      });
+
+      // Update states
+      setRemovedPMIDs(removedPMIDsArray);
+      setTotalUniques(cleanedData.length);
+
+      setTodaysCleanedUniques(cleanedData);
+      setTodaysRemovedDuplicates(
+        removedPMIDsArray.map((pmid) =>
+          duplicatesData.find((row) => row.PMID === pmid) || { PMID: pmid }
+        )
+      );
+
+      // Convert back to worksheets
+      const updatedUniqueWorksheet = XLSX.utils.json_to_sheet(cleanedData, { skipHeader: false });
+      const updatedDuplicateWorksheet = XLSX.utils.json_to_sheet(duplicatesData, { skipHeader: false });
+      console.log("updatedUniqueWorksheet", updatedUniqueWorksheet)
+      console.log("updatedDuplicateWorksheet", updatedDuplicateWorksheet)
+      // Create a shallow copy of workbook and replace sheets
+      const wbCopy = { SheetNames: [...workbook.SheetNames], Sheets: { ...workbook.Sheets } };
+      wbCopy.Sheets[uniqueSheetName] = updatedUniqueWorksheet;
+
+      if (!wbCopy.SheetNames.includes(duplicateSheetName)) {
+        wbCopy.SheetNames.push(duplicateSheetName);
       }
-      return true; // Keep this row
-    });
+      wbCopy.Sheets[duplicateSheetName] = updatedDuplicateWorksheet;
 
-    // Update state with removed PMIDs
-    setRemovedPMIDs(removedPMIDsArray);
-    setTodaysRemovedPMIDs(todaysRemovedPMIDsArray);
+      // Write the updated workbook
+      const updatedExcel = XLSX.write(wbCopy, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([updatedExcel], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      saveAs(blob, "Cleaned_Unique_Hits.xlsx");
 
-    // Calculate total unique PMIDs from cleaned data
-    const uniquePMIDsSet = new Set(cleanedData.map(row => row.PMID));
-    const totalUniqueCount = uniquePMIDsSet.size; // Count of unique PMIDs
-    setTotalUniques(totalUniqueCount); // Store in state
+      alert(
+        `Cleaned Unique Hits file has been downloaded successfully!\nRemoved ${removedPMIDsArray.length} duplicate PMIDs and moved to Duplicate Hits sheet.`
+      );
 
-    // Create a new worksheet from the cleaned data
-    const updatedUniqueWorksheet = XLSX.utils.json_to_sheet(cleanedData, {
-      skipHeader: false,
-    });
+      // Update workbook state
+      setWorkbook(wbCopy);
+      console.log("Cleaned Data (Unique Hits):", cleanedData);
+      console.log("Duplicates Data (Duplicate Hits):", duplicatesData);
+      console.log("Removed PMIDs:", removedPMIDsArray);
 
-    // Create a new workbook and append the updated Unique Hits sheet
-    const updatedWorkbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(updatedWorkbook, updatedUniqueWorksheet, uniqueSheetName);
+      // Filter today's rows
+      const todaysCleanedData = cleanedData.filter(
+        (row) => row["Received Date (DD MMM YYYY)"] === todayFormatted
+      );
 
-    // Write the updated workbook to a file
-    const updatedExcel = XLSX.write(updatedWorkbook, {
-      bookType: "xlsx",
-      type: "array",
-    });
-    const blob = new Blob([updatedExcel], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
+      const todaysDuplicatesData = duplicatesData.filter(
+        (row) =>
+          row["Processed Date"] === todayFormatted ||
+          row["Received Date (DD MMM YYYY)"] === todayFormatted
+      );
 
-    saveAs(blob, "Cleaned_Unique_Hits.xlsx");
-    alert("Cleaned Unique Hits file has been downloaded successfully!");
+      // Save in state
+      setTodaysCleanedUniques(todaysCleanedData);
+      setTodaysRemovedDuplicates(todaysDuplicatesData);
+      setTodayRemovedPMIDs(removedPMIDsArray)
 
-    // Log the counts of removed PMIDs
-    console.log(`Total removed PMIDs: ${removedPMIDsArray.length}`);
-    console.log(`Today's removed PMIDs: ${todaysRemovedPMIDsArray.length}`);
-    console.log(`Total unique PMIDs: ${totalUniqueCount}`);
-    console.log(`Total unique PMIDs :${totalUniques}`)
-    console.log("Total Unique Hits", duplicateRows)
-    console.log("todaysRemovedPMIDs", todaysRemovedPMIDs)
-    console.log("nonDuplicateRows", nonDuplicateRows)
-  };
+      console.log("Today's Cleaned Data:", todaysCleanedData);
+      console.log("Today's Duplicates Data:", todaysDuplicatesData);
 
-
-  const getTotalUniques = () => {
-    // Extract PMIDs from duplicateRows and todaysRemovedPMIDs
-    const combinedData = [];
-
-    // Add PMIDs from duplicateRows
-    duplicateRows.forEach((row, index) => {
-      if (row.PMID) { // Check if PMID exists
-        combinedData.push({
-          SNO: index + 1, // Serial number starts from 1
-          PMID: row.PMID,
-        });
-      }
-    });
-
-    // Add PMIDs from todaysRemovedPMIDs
-    todaysRemovedPMIDs.forEach((row, index) => {
-      if (row.PMID) { // Check if PMID exists
-        combinedData.push({
-          SNO: duplicateRows.length + index + 1, // Continue SNO from duplicateRows
-          PMID: row.PMID,
-        });
-      }
-    });
-
-    // Log combined data for debugging
-    console.log("Combined Data:", combinedData);
-    setCombinedData(combinedData); // Store combined data in state for further use
-
-
-    // Check if combinedData is empty
-    if (combinedData.length === 0) {
-      alert("No data available to download.");
-      return; // Exit the function if there's no data
+      // Debug logs
+      console.log("Total removed PMIDs:", removedPMIDsArray.length);
+      console.log("Total unique PMIDs after cleaning:", cleanedData.length);
+      console.log("Duplicate Hits total rows:", duplicatesData.length);
+    } catch (error) {
+      console.error("Error cleaning Unique Hits:", error);
+      alert("An error occurred while cleaning Unique Hits. Check the console for details.");
     }
-
-    // Create a worksheet from the combined data
-    const worksheet = XLSX.utils.json_to_sheet(combinedData, {
-      header: ["SNO", "PMID"],
-    });
-
-    // Create a new workbook and append the worksheet
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Total Duplicate Hits");
-
-    // Write the workbook to a file
-    const excelBuffer = XLSX.write(workbook, {
-      bookType: "xlsx",
-      type: "array",
-    });
-    const blob = new Blob([excelBuffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-
-    // Trigger download
-    saveAs(blob, "Total_Dulicate_Hits.xlsx");
-    alert("Total Unique Hits file has been downloaded successfully!");
   };
 
-  const getTotalUniqueHits = () => {
-    // 1. Create a Set of PMIDs to remove
-    const removedSet = new Set(todaysRemovedPMIDs.map(row => row.PMID));
+  // Helper to parse DD MMM YYYY
+  const parseDate = (dateStr) => {
+    if (!dateStr) return null;
+    return new Date(Date.parse(dateStr));
+  };
 
-    // 2. Filter nonDuplicateRows to exclude removed PMIDs
-    const filteredData = nonDuplicateRows
-      .filter(row => row.PMID && !removedSet.has(row.PMID))
-      .map((row, index) => ({
-        SNO: index + 1,
-        PMID: row.PMID
-      }));
-
-    // 3. Set the result to state (optional)
-    setTotalUniqueHits(filteredData); // Use if you need to display this somewhere
-
-    // 4. Handle empty case
-    if (filteredData.length === 0) {
-      alert("No data available to download.");
+  // Last dated duplicates
+  const getLastDatedDuplicates = () => {
+    if (!workbook) {
+      alert("Please upload or process the Master Tracker file first.");
       return;
     }
-    console.log("Filtered Data:", totalUniqueHits); // For debugging
-    // 5. Generate Excel sheet
-    const worksheet = XLSX.utils.json_to_sheet(filteredData, {
-      header: ["SNO", "PMID"],
-    });
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Total Unique Hits");
 
-    // 6. Write and download Excel
-    const excelBuffer = XLSX.write(workbook, {
-      bookType: "xlsx",
-      type: "array",
-    });
-    const blob = new Blob([excelBuffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
+    const duplicateSheet = workbook.Sheets["Duplicate Hits"];
+    if (!duplicateSheet) {
+      alert("Duplicate Hits sheet not found.");
+      return;
+    }
 
-    saveAs(blob, "Total_Unique_Hits.xlsx");
-    alert("Total Unique Hits file has been downloaded successfully!");
+    const allRows = XLSX.utils.sheet_to_json(duplicateSheet, { defval: "" });
+    if (allRows.length === 0) return;
+
+    const maxDate = allRows.reduce((max, row) => {
+      const rowDate = parseDate(row["Processed Date"]);
+      return rowDate > max ? rowDate : max;
+    }, new Date(0));
+
+    const lastDatedRows = allRows.filter(
+      (row) => parseDate(row["Processed Date"]).getTime() === maxDate.getTime()
+    );
+
+    setCombinedData(lastDatedRows);
+    alert(`Total duplicates: ${lastDatedRows.length}`);
+  };
+
+  // Last dated uniques
+  const getLastDatedUniques = () => {
+    if (!workbook) {
+      alert("Please upload or process the Master Tracker file first.");
+      return;
+    }
+
+    const uniqueSheet = workbook.Sheets["Unique Hits"];
+    if (!uniqueSheet) {
+      alert("Unique Hits sheet not found.");
+      return;
+    }
+
+    const allRows = XLSX.utils.sheet_to_json(uniqueSheet, { defval: "" });
+    if (allRows.length === 0) return;
+
+    const maxDate = allRows.reduce((max, row) => {
+      const rowDate = parseDate(row["Received Date (DD MMM YYYY)"]);
+      return rowDate > max ? rowDate : max;
+    }, new Date(0));
+
+    const lastDatedRows = allRows.filter(
+      (row) => parseDate(row["Received Date (DD MMM YYYY)"]).getTime() === maxDate.getTime()
+    );
+
+    setTotalUniqueHits(lastDatedRows);
+    alert(`Total Uniques: ${lastDatedRows.length}`);
   };
 
 
   const downloadCsvData = () => {
     exportToCsv(csvData, "combined_CSV_Data.csv");
   };
-  
+
   return (
     <div className="App">
       <Grid container spacing={3}>
@@ -524,10 +525,10 @@ function App() {
             <p>Total Rows Processed: <strong>{csvData.length}</strong></p>
             <p>Duplicate Rows: <strong>{duplicateRows.length}</strong></p>
             <p>Non-Duplicate Rows: <strong>{nonDuplicateRows.length}</strong></p>
-            <p>Removed PMIDs: <strong>{removedPMIDs.length}</strong></p>
-            <p>Duplicate Hits from the Master tracker: <strong>{todaysRemovedPMIDs.length}</strong></p>
-            <p>Total duplicates:<strong>{combinedData.length}</strong> </p>
-            <p>Total Uniques : <strong>{totalUniqueHits.length}</strong></p>
+            <p>Removed PMIDs: <strong>{removedTodayPMIS.length}</strong></p>
+            {/* <p>Duplicate Hits from the Master tracker: <strong>{todaysRemovedPMIDs.length}</strong></p> */}
+            <p>Total duplicates:<strong>{todaysRemovedDuplicates.length}</strong> </p>
+            <p>Total Uniques : <strong>{todaysCleanedUniques.length}</strong></p>
 
             {/* Upload Master Tracker Section */}
             <h3>Upload Master Tracker File (Excel)</h3>
@@ -563,16 +564,7 @@ function App() {
                     Download Updated Master Tracker
                   </Button>
                 </Grid>
-                <Grid item xs={4}>
-                  <Button variant="contained" onClick={getTotalUniques}>
-                    Total Duplicates
-                  </Button>
-                </Grid>
-                <Grid item xs={4}>
-                  <Button variant="contained" onClick={getTotalUniqueHits}>
-                    Total Unique Hits
-                  </Button>
-                </Grid>
+
                 <Grid item xs>
                   <Button variant="contained" onClick={downloadCsvData}>
                     Download Uploaded CSV
