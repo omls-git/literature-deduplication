@@ -18,9 +18,9 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [workbook, setWorkbook] = useState(null);
-  //const [removedPMIDs, setRemovedPMIDs] = useState([]); // State to store removed PMIDs
+  const [removedPMIDs, setRemovedPMIDs] = useState([]); // State to store removed PMIDs
   //const [todaysRemovedPMIDs, setTodaysRemovedPMIDs] = useState([]); // State to store today's removed PMIDs
-  //const [totalUniques, setTotalUniques] = useState(0);
+  const [totalUniques, setTotalUniques] = useState(0);
   //const [combinedData, setCombinedData] = useState([]); // State to store combined data
   //const [totalUniqueHits, setTotalUniqueHits] = useState([]);
   const [todaysCleanedUniques, setTodaysCleanedUniques] = useState([]);
@@ -341,9 +341,12 @@ function App() {
       setTodaysCleanedUniques(cleanedData);
       setTodaysRemovedDuplicates(
         removedPMIDsArray.map((pmid) =>
+
           duplicatesData.find((row) => row.PMID === pmid) || { PMID: pmid }
         )
       );
+      console.log(removedPMIDs)
+      console.log(totalUniques)
 
       // Convert back to worksheets
       const updatedUniqueWorksheet = XLSX.utils.json_to_sheet(cleanedData, { skipHeader: false });
