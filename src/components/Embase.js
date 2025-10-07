@@ -104,6 +104,7 @@ const Embase = () => {
         setAllCsvData((prevData) => {
           const newAllData = [...prevData, ...cleanedData];
           setCsvData(newAllData); // Update total CSV data
+          console.log("All the csv data", newAllData)
           return newAllData;
         });
       };
@@ -379,7 +380,8 @@ const Embase = () => {
     console.log("Common PUIs:", commonPUIs);
     console.log("Total Common PUIs:", commonPUIs.length);
 
-    setTodaysUnique(commonPUIs.length)
+    setTodaysUnique(commonPUIs)
+    console.log("setTodaysUnique", commonPUIs)
     if (commonPUIs.length === 0) {
       console.warn("No common PUIs found.");
       return;
@@ -413,13 +415,75 @@ const Embase = () => {
   };
 
 
+  // ✅ Create Unique Full Data (One row per matching PUI)
+  const getUniqueFullData = () => {
+    if (!todaysuniques || todaysuniques.length === 0) {
+      alert("No PUIs found. Please run 'Update & Download Master Tracker' first.");
+      return;
+    }
+
+    if (!csvData || csvData.length === 0) {
+      alert("CSV data not available. Please upload Embase files first.");
+      return;
+    }
+
+    // Convert to uppercase trimmed set for fast lookup
+    const todaysSet = new Set(
+      todaysuniques.map(pui => pui?.toString().trim().toUpperCase())
+    );
+
+    // To ensure only one row per unique PUI
+    const seenPUIs = new Set();
+    const matchedData = [];
+
+    for (const row of csvData) {
+      const pui = row?.PUI?.toString().trim().toUpperCase();
+      if (todaysSet.has(pui) && !seenPUIs.has(pui)) {
+        matchedData.push(row);
+        seenPUIs.add(pui); // ensure only one entry per PUI
+      }
+    }
+
+    console.log("✅ Matched PUIs count:", matchedData.length);
+    console.log("✅ Example matched data:", matchedData.slice(0, 5));
+
+    if (matchedData.length === 0) {
+      alert("No matching PUIs found in CSV data.");
+      return;
+    }
+
+    // ✅ Export to Excel
+    const worksheet = XLSX.utils.json_to_sheet(matchedData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Unique_Full_Data");
+
+    const today = new Date().toISOString().split("T")[0];
+    XLSX.writeFile(workbook, `Unique_Full_Data_${today}.xlsx`);
+  };
+
+  // ✅ Download the merged CSV data as a file
+const downloadMergedCsv = () => {
+  if (!csvData || csvData.length === 0) {
+    alert("No merged CSV data found. Please upload or merge CSV files first.");
+    return;
+  }
+
+  console.log("Merged CSV data count:", csvData.length);
+
+  // Create worksheet and workbook
+  const worksheet = XLSX.utils.json_to_sheet(csvData);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Merged_CSV_Data");
+
+  // Optional: make filename include today’s date
+  const today = new Date().toISOString().split("T")[0];
+  XLSX.writeFile(workbook, `Merged_CSV_Data_${today}.xlsx`);
+};
+
 
 
   return (
     <div>
-
-
-
       <div style={{ backgroundColor: "#FFF3E0", padding: "20px", borderRadius: "10px", marginTop: "20px" }}>
         <h1>Embase</h1>
         <Box sx={{ flexGrow: 1 }}>
@@ -461,6 +525,7 @@ const Embase = () => {
               </Button>
 
             </Grid>
+
           </Grid>
         </Box>
 
@@ -499,7 +564,7 @@ const Embase = () => {
           Duplicates with the Master tracker: <strong>{duplicatePuiLength}</strong>
         </p>
         <p>
-          Total Unique hits to be assigned for review for The day: <strong>{todaysuniques}</strong>
+          Total Unique hits to be assigned for review for The day: <strong>{todaysuniques.length}</strong>
         </p>
 
 
@@ -530,6 +595,17 @@ const Embase = () => {
                 <CircularProgress size={24} />  Update & Download Master Tracker
               </Button>
             </Grid>
+            <Grid item xs>
+              <Button variant="contained" onClick={getUniqueFullData}>
+                <CircularProgress size={24} />  Get Unique Full Data
+              </Button>
+            </Grid>
+            <Grid item xs>
+              <Button variant="contained" onClick={downloadMergedCsv}>
+                Merged CSV Files
+              </Button>
+            </Grid>
+
 
           </Grid>
         </Box>
