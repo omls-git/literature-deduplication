@@ -416,50 +416,62 @@ const Embase = () => {
 
 
   // ✅ Create Unique Full Data (One row per matching PUI)
-  const getUniqueFullData = () => {
-    if (!todaysuniques || todaysuniques.length === 0) {
-      alert("No PUIs found. Please run 'Update & Download Master Tracker' first.");
-      return;
+const getUniqueFullData = () => {
+  if (!todaysuniques || todaysuniques.length === 0) {
+    alert("No PUIs found. Please run 'Update & Download Master Tracker' first.");
+    return;
+  }
+
+  if (!csvData || csvData.length === 0) {
+    alert("CSV data not available. Please upload Embase files first.");
+    return;
+  }
+
+  const todaysSet = new Set(
+    todaysuniques.map(pui => pui?.toString().trim().toUpperCase())
+  );
+
+  const seenPUIs = new Set();
+  const matchedData = [];
+
+  for (const row of csvData) {
+    const pui = row?.PUI?.toString().trim().toUpperCase();
+    if (todaysSet.has(pui) && !seenPUIs.has(pui)) {
+      matchedData.push(row);
+      seenPUIs.add(pui);
     }
+  }
 
-    if (!csvData || csvData.length === 0) {
-      alert("CSV data not available. Please upload Embase files first.");
-      return;
-    }
+  console.log("✅ Matched PUIs count:", matchedData.length);
 
-    // Convert to uppercase trimmed set for fast lookup
-    const todaysSet = new Set(
-      todaysuniques.map(pui => pui?.toString().trim().toUpperCase())
-    );
+  if (matchedData.length === 0) {
+    alert("No matching PUIs found in CSV data.");
+    return;
+  }
 
-    // To ensure only one row per unique PUI
-    const seenPUIs = new Set();
-    const matchedData = [];
-
-    for (const row of csvData) {
-      const pui = row?.PUI?.toString().trim().toUpperCase();
-      if (todaysSet.has(pui) && !seenPUIs.has(pui)) {
-        matchedData.push(row);
-        seenPUIs.add(pui); // ensure only one entry per PUI
+  // ✅ Truncate long text values
+  const MAX_CELL_LENGTH = 32767;
+  const truncatedData = matchedData.map(row => {
+    const newRow = {};
+    for (const [key, value] of Object.entries(row)) {
+      let cellValue = value;
+      if (typeof cellValue === "string" && cellValue.length > MAX_CELL_LENGTH) {
+        console.warn(`Truncating "${key}" for long value (${cellValue.length} chars)`);
+        cellValue = cellValue.slice(0, MAX_CELL_LENGTH - 3) + "...";
       }
+      newRow[key] = cellValue;
     }
+    return newRow;
+  });
 
-    console.log("✅ Matched PUIs count:", matchedData.length);
-    console.log("✅ Example matched data:", matchedData.slice(0, 5));
+  const worksheet = XLSX.utils.json_to_sheet(truncatedData);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Unique_Full_Data");
 
-    if (matchedData.length === 0) {
-      alert("No matching PUIs found in CSV data.");
-      return;
-    }
+  const today = new Date().toISOString().split("T")[0];
+  XLSX.writeFile(workbook, `Unique_Full_Data_${today}.xlsx`);
+};
 
-    // ✅ Export to Excel
-    const worksheet = XLSX.utils.json_to_sheet(matchedData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Unique_Full_Data");
-
-    const today = new Date().toISOString().split("T")[0];
-    XLSX.writeFile(workbook, `Unique_Full_Data_${today}.xlsx`);
-  };
 
   // ✅ Download the merged CSV data as a file
 const downloadMergedCsv = () => {
