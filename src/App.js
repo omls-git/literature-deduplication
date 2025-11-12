@@ -277,134 +277,110 @@ function App() {
 
 
   const handleDownloadUpdated = () => {
-    if (!workbook) {
-      alert("Please upload or process the Master Tracker file first.");
-      return;
-    }
+  if (!workbook) {
+    alert("Please upload or process the Master Tracker file first.");
+    return;
+  }
 
-    const uniqueSheetName = "Unique Hits";
-    const duplicateSheetName = "Duplicate Hits";
-    const uniqueWorksheet = workbook.Sheets[uniqueSheetName];
-    const duplicateWorksheet = workbook.Sheets[duplicateSheetName];
+  const uniqueSheetName = "Unique Hits";
+  const duplicateSheetName = "Duplicate Hits";
+  const uniqueWorksheet = workbook.Sheets[uniqueSheetName];
+  const duplicateWorksheet = workbook.Sheets[duplicateSheetName];
 
-    if (!uniqueWorksheet) {
-      alert("Unique Hits sheet not found in the workbook.");
-      return;
-    }
+  if (!uniqueWorksheet) {
+    alert("Unique Hits sheet not found in the workbook.");
+    return;
+  }
 
-    try {
-      // Read data from Unique Hits sheet
-      const uniqueData = XLSX.utils.sheet_to_json(uniqueWorksheet, { defval: "" });
+  try {
+    // Read data from Unique Hits sheet
+    const uniqueData = XLSX.utils.sheet_to_json(uniqueWorksheet, { defval: "" });
 
-      // Prepare today's formatted date
-      const today = new Date();
-      const todayFormatted = today.toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
+    // Prepare today's formatted date
+    const today = new Date();
+    const todayFormatted = today.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+
+    const seen = new Set();
+    const cleanedData = []; // Will hold unique PMIDs
+    const duplicatesData = duplicateWorksheet
+      ? XLSX.utils.sheet_to_json(duplicateWorksheet, { defval: "" })
+      : [];
+
+    const removedPMIDsArray = [];
+
+    uniqueData.forEach((row) => {
+      const pmid = row.PMID ? String(row.PMID).trim() : "";
+      if (!pmid) return; // skip empty PMIDs
+
+      // Add every occurrence to Duplicate Hits
+      duplicatesData.push({
+        ...row,
+        "Processed Date": todayFormatted,
       });
 
-      const seen = new Set();
-      const cleanedData = [];
-      const duplicatesData = duplicateWorksheet
-        ? XLSX.utils.sheet_to_json(duplicateWorksheet, { defval: "" })
-        : [];
-
-      const removedPMIDsArray = [];
-
-      uniqueData.forEach((row) => {
-        const pmid = row.PMID ? String(row.PMID).trim() : "";
-        if (!pmid) return; // skip empty PMIDs
-
-        if (!seen.has(pmid)) {
-          seen.add(pmid);
-          cleanedData.push({
-            SNO: cleanedData.length + 1,
-            "Received Date (DD MMM YYYY)":
-              row["Received Date (DD MMM YYYY)"] || todayFormatted,
-            PMID: pmid,
-          });
-        } else {
-          // duplicate -> remove from Unique Hits and add to Duplicate Hits
-          removedPMIDsArray.push(pmid);
-          duplicatesData.push({
-            ...row,
-            "Processed Date": todayFormatted,
-          });
-        }
-      });
-
-      // Update states
-      setRemovedPMIDs(removedPMIDsArray);
-      setTotalUniques(cleanedData.length);
-
-      setTodaysCleanedUniques(cleanedData);
-      setTodaysRemovedDuplicates(
-        removedPMIDsArray.map((pmid) =>
-
-          duplicatesData.find((row) => row.PMID === pmid) || { PMID: pmid }
-        )
-      );
-      console.log(removedPMIDs)
-      console.log(totalUniques)
-
-      // Convert back to worksheets
-      const updatedUniqueWorksheet = XLSX.utils.json_to_sheet(cleanedData, { skipHeader: false });
-      const updatedDuplicateWorksheet = XLSX.utils.json_to_sheet(duplicatesData, { skipHeader: false });
-      console.log("updatedUniqueWorksheet", updatedUniqueWorksheet)
-      console.log("updatedDuplicateWorksheet", updatedDuplicateWorksheet)
-      // Create a shallow copy of workbook and replace sheets
-      const wbCopy = { SheetNames: [...workbook.SheetNames], Sheets: { ...workbook.Sheets } };
-      wbCopy.Sheets[uniqueSheetName] = updatedUniqueWorksheet;
-
-      if (!wbCopy.SheetNames.includes(duplicateSheetName)) {
-        wbCopy.SheetNames.push(duplicateSheetName);
+      // Only add the first occurrence to Unique Hits
+      if (!seen.has(pmid)) {
+        seen.add(pmid);
+        cleanedData.push({
+          SNO: cleanedData.length + 1,
+          "Received Date (DD MMM YYYY)":
+            row["Received Date (DD MMM YYYY)"] || todayFormatted,
+          PMID: pmid,
+          Title: row.Title, // include Title if needed
+        });
+      } else {
+        removedPMIDsArray.push(pmid); // track duplicates for UI
       }
-      wbCopy.Sheets[duplicateSheetName] = updatedDuplicateWorksheet;
+    });
 
-      // Write the updated workbook
-      const updatedExcel = XLSX.write(wbCopy, { bookType: "xlsx", type: "array" });
-      const blob = new Blob([updatedExcel], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      saveAs(blob, "Cleaned_Unique_Hits.xlsx");
+    // Update states
+    setRemovedPMIDs(removedPMIDsArray);
+    setTotalUniques(cleanedData.length);
+    console.log("Total Unique PMIDs Today:", totalUniques);
+  console.log("Removed PMIDs Today:", removedPMIDs);
+    setTodaysCleanedUniques(cleanedData);
+    setTodaysRemovedDuplicates(
+      removedPMIDsArray.map((pmid) =>
+        duplicatesData.find((row) => row.PMID === pmid) || { PMID: pmid }
+      )
+    );
 
-      alert(
-        `Cleaned Unique Hits file has been downloaded successfully!\nRemoved ${removedPMIDsArray.length} duplicate PMIDs and moved to Duplicate Hits sheet.`
-      );
+    // Convert back to worksheets
+    const updatedUniqueWorksheet = XLSX.utils.json_to_sheet(cleanedData, { skipHeader: false });
+    const updatedDuplicateWorksheet = XLSX.utils.json_to_sheet(duplicatesData, { skipHeader: false });
 
-      // Update workbook state
-      setWorkbook(wbCopy);
-      console.log("Cleaned Data (Unique Hits):", cleanedData);
-      console.log("Duplicates Data (Duplicate Hits):", duplicatesData);
-      console.log("Removed PMIDs:", removedPMIDsArray);
+    // Replace sheets in workbook
+    const wbCopy = { SheetNames: [...workbook.SheetNames], Sheets: { ...workbook.Sheets } };
+    wbCopy.Sheets[uniqueSheetName] = updatedUniqueWorksheet;
 
-      // Filter today's rows
-      const todaysCleanedData = cleanedData.filter(
-        (row) => row["Received Date (DD MMM YYYY)"] === todayFormatted
-      );
-
-      const todaysDuplicatesData = duplicatesData.filter(
-        (row) =>
-          row["Processed Date"] === todayFormatted ||
-          row["Received Date (DD MMM YYYY)"] === todayFormatted
-      );
-
-      // Save in state
-      setTodaysCleanedUniques(todaysCleanedData);
-      setTodaysRemovedDuplicates(todaysDuplicatesData);
-      setTodayRemovedPMIDs(removedPMIDsArray)
-
-      console.log("Today's Cleaned Data:", todaysCleanedData);
-      console.log("Today's Duplicates Data:", todaysDuplicatesData);
-
-      // Debug logs
-      console.log("Total removed PMIDs:", removedPMIDsArray.length);
-      console.log("Total unique PMIDs after cleaning:", cleanedData.length);
-      console.log("Duplicate Hits total rows:", duplicatesData.length);
-    } catch (error) {
-      console.error("Error cleaning Unique Hits:", error);
-      alert("An error occurred while cleaning Unique Hits. Check the console for details.");
+    if (!wbCopy.SheetNames.includes(duplicateSheetName)) {
+      wbCopy.SheetNames.push(duplicateSheetName);
     }
-  };
+    wbCopy.Sheets[duplicateSheetName] = updatedDuplicateWorksheet;
+
+    // Write the updated workbook
+    const updatedExcel = XLSX.write(wbCopy, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([updatedExcel], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    saveAs(blob, "Cleaned_Unique_Hits.xlsx");
+
+    alert(
+      `Cleaned Unique Hits file has been downloaded successfully!\nTotal PMIDs added to Duplicate Hits: ${duplicatesData.length}`
+    );
+
+    // Update workbook state
+    setWorkbook(wbCopy);
+    setTodayRemovedPMIDs(removedPMIDsArray);
+
+  } catch (error) {
+    console.error("Error cleaning Unique Hits:", error);
+    alert("An error occurred while cleaning Unique Hits. Check the console for details.");
+  }
+};
+
 
   // // Helper to parse DD MMM YYYY
   // const parseDate = (dateStr) => {
