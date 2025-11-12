@@ -364,7 +364,11 @@ function App() {
         (r) => r["Received Date (DD MMM YYYY)"] === todayFormatted
       ).length;
 
-      const todaysDuplicateCount = movedToDuplicate.length;
+      const todaysDuplicateCount = updatedDuplicateData.filter(
+        (r) =>
+          r["Processed Date"] === todayFormatted ||
+          r["Received Date (DD MMM YYYY)"] === todayFormatted
+      ).length;
 
       // Step 🔟: Update states
       setWorkbook(wbCopy);
