@@ -25,7 +25,9 @@ function App() {
   //const [totalUniqueHits, setTotalUniqueHits] = useState([]);
   const [todaysCleanedUniques, setTodaysCleanedUniques] = useState([]);
   const [todaysRemovedDuplicates, setTodaysRemovedDuplicates] = useState([]);
-  const[removedTodayPMIS, setTodayRemovedPMIDs]= useState([])
+  const [removedTodayPMIS, setTodayRemovedPMIDs] = useState([])
+  const [todaysUniqueCount, setTodaysUniqueCount] = useState(0);
+  const [todaysDuplicateCount, setTodaysDuplicateCount] = useState(0);
 
 
 
@@ -113,7 +115,7 @@ function App() {
     setMasterTrackerFile(file);
   };
 
-  // Add Duplicates to Master Tracker
+  // ✅ Add all duplicates (including existing PMIDs) to Master Tracker
   const addDuplicatesToMasterTracker = async () => {
     setIsModalOpen(true);
     if (!masterTrackerFile) {
@@ -130,68 +132,44 @@ function App() {
           const data = new Uint8Array(e.target.result);
           const workbook = XLSX.read(data, { type: "array" });
 
-          // const todayDate = new Date().toLocaleDateString("en-GB", {
-          //   day: "2-digit",
-          //   month: "short",
-          //   year: "numeric",
-          // });
-
           const formatDate = (value) => {
             if (typeof value === "number") {
-              // Convert Excel serial number to a date
-              const excelBaseDate = new Date(1899, 11, 30); // Excel counts from 30 Dec 1899
+              const excelBaseDate = new Date(1899, 11, 30);
               const formattedDate = new Date(excelBaseDate.getTime() + value * 86400000);
-              return formatDate(formattedDate); // Format it again using the logic below
+              return formatDate(formattedDate);
             }
-
             if (value instanceof Date) {
-              // Format the date as DD MMM YYYY
               const day = String(value.getDate()).padStart(2, "0");
               const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
               const month = monthNames[value.getMonth()];
               const year = value.getFullYear();
               return `${day} ${month} ${year}`;
             }
-
-            if (typeof value === "string") {
-              // Handle already formatted dates or unexpected formats
-              return value;
-            }
-
-            return null; // Return null for invalid dates
+            if (typeof value === "string") return value;
+            return null;
           };
 
-          const appendData = (sheetName, rows) => {
+          const appendData = (sheetName, rows, allowDuplicates = false) => {
             const worksheet =
               workbook.Sheets[sheetName] ||
               XLSX.utils.aoa_to_sheet([["SNO", "Received Date (DD MMM YYYY)", "PMID"]]);
 
-            // Read current data from the worksheet
             let sheetData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-
-            // Get today's date
             const today = formatDate(new Date());
 
-            // Clean up existing data:
-            // - Format "Received Date" column to DD MMM YYYY
-            // - Remove empty columns (__EMPTY, __EMPTY_1, etc.)
             sheetData = sheetData.map((row) => ({
               SNO: row.SNO || "",
               "Received Date (DD MMM YYYY)": row["Received Date (DD MMM YYYY)"]
                 ? formatDate(row["Received Date (DD MMM YYYY)"])
-                : today, // Fill missing dates with today's date
+                : today,
               PMID: row.PMID || "",
             }));
 
-            // Create a Set to track unique PMIDs
-            const uniquePMIDs = new Set(sheetData.map((row) => row.PMID));
-
-            // Get the last SNO value for proper numbering
             const lastSno = sheetData.length > 0 ? parseInt(sheetData[sheetData.length - 1].SNO) || 0 : 0;
 
-            // Append new rows, ensuring proper formatting and avoiding duplicate PMIDs
+            // ✅ Append new rows (optionally allow duplicates)
             rows.forEach((row, index) => {
-              if (!uniquePMIDs.has(row.PMID)) {  // ✅ Only add if PMID is unique
+              if (allowDuplicates || !sheetData.some((r) => r.PMID === row.PMID)) {
                 sheetData.push({
                   SNO: lastSno + index + 1,
                   "Received Date (DD MMM YYYY)": row["Received Date (DD MMM YYYY)"]
@@ -199,69 +177,41 @@ function App() {
                     : today,
                   PMID: row.PMID,
                 });
-                uniquePMIDs.add(row.PMID);  // Track this PMID
               }
             });
 
-            // Remove duplicates within the same sheet by filtering the sheetData again
-            const seenPMIDs = new Set();
-            sheetData = sheetData.filter((row) => {
-              if (!seenPMIDs.has(row.PMID)) {
-                seenPMIDs.add(row.PMID);
-                return true;
-              }
-              return false;
-            });
-
-            // Re-number the SNO column
+            // Re-number SNO column
             sheetData.forEach((row, index) => {
               row.SNO = index + 1;
             });
 
-            // Convert updated data back into a worksheet
-            const updatedSheet = XLSX.utils.json_to_sheet(sheetData, {
-              skipHeader: false,
-            });
-
-            return updatedSheet;
+            return XLSX.utils.json_to_sheet(sheetData, { skipHeader: false });
           };
-          // Process Duplicate Hits
+
+          // ✅ Process Duplicate Hits (allow duplicates)
           const duplicateSheetName = "Duplicate Hits";
-          const updatedDuplicateWorksheet = appendData(duplicateSheetName, duplicateRows);
+          const updatedDuplicateWorksheet = appendData(duplicateSheetName, duplicateRows, true);
 
-          // Process Unique Hits
+          // ✅ Process Unique Hits (do NOT allow duplicates)
           const uniqueSheetName = "Unique Hits";
-          const updatedUniqueWorksheet = appendData(uniqueSheetName, nonDuplicateRows);
+          const updatedUniqueWorksheet = appendData(uniqueSheetName, nonDuplicateRows, false);
 
-          // Create a new workbook and append updated sheets
+          // ✅ Create a new workbook and append updated sheets
           const updatedWorkbook = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(
-            updatedWorkbook,
-            updatedDuplicateWorksheet,
-            duplicateSheetName
-          );
-          XLSX.utils.book_append_sheet(
-            updatedWorkbook,
-            updatedUniqueWorksheet,
-            uniqueSheetName
-          );
+          XLSX.utils.book_append_sheet(updatedWorkbook, updatedDuplicateWorksheet, duplicateSheetName);
+          XLSX.utils.book_append_sheet(updatedWorkbook, updatedUniqueWorksheet, uniqueSheetName);
 
-          // Write the updated workbook to a file
-          const updatedExcel = XLSX.write(updatedWorkbook, {
-            bookType: "xlsx",
-            type: "array",
-          });
+          // ✅ Write updated workbook to file
+          const updatedExcel = XLSX.write(updatedWorkbook, { bookType: "xlsx", type: "array" });
           const blob = new Blob([updatedExcel], {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           });
 
           saveAs(blob, "Updated_Master_Tracker.xlsx");
-          alert("Duplicates and Unique records added to Master Tracker successfully!");
+          alert("✅ All duplicates and unique records added to Master Tracker successfully!");
         } catch (innerError) {
           console.error("Error processing the Excel file:", innerError);
-          alert(
-            "An error occurred while processing the Excel file. Check the console for details."
-          );
+          alert("An error occurred while processing the Excel file. Check the console for details.");
         }
       };
 
@@ -277,109 +227,171 @@ function App() {
 
 
   const handleDownloadUpdated = () => {
-  if (!workbook) {
-    alert("Please upload or process the Master Tracker file first.");
-    return;
-  }
+    if (!workbook) {
+      alert("Please upload or process the Master Tracker file first.");
+      return;
+    }
 
-  const uniqueSheetName = "Unique Hits";
-  const duplicateSheetName = "Duplicate Hits";
-  const uniqueWorksheet = workbook.Sheets[uniqueSheetName];
-  const duplicateWorksheet = workbook.Sheets[duplicateSheetName];
+    const uniqueSheetName = "Unique Hits";
+    const duplicateSheetName = "Duplicate Hits";
+    const uniqueWorksheet = workbook.Sheets[uniqueSheetName];
+    const duplicateWorksheet = workbook.Sheets[duplicateSheetName];
 
-  if (!uniqueWorksheet) {
-    alert("Unique Hits sheet not found in the workbook.");
-    return;
-  }
+    if (!uniqueWorksheet) {
+      alert("Unique Hits sheet not found in the workbook.");
+      return;
+    }
 
-  try {
-    // Read data from Unique Hits sheet
-    const uniqueData = XLSX.utils.sheet_to_json(uniqueWorksheet, { defval: "" });
+    try {
+      // Step 1️⃣: Read data from both sheets
+      const uniqueData = XLSX.utils.sheet_to_json(uniqueWorksheet, { defval: "" });
+      const duplicateData = duplicateWorksheet
+        ? XLSX.utils.sheet_to_json(duplicateWorksheet, { defval: "" })
+        : [];
 
-    // Prepare today's formatted date
-    const today = new Date();
-    const todayFormatted = today.toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-
-    const seen = new Set();
-    const cleanedData = []; // Will hold unique PMIDs
-    const duplicatesData = duplicateWorksheet
-      ? XLSX.utils.sheet_to_json(duplicateWorksheet, { defval: "" })
-      : [];
-
-    const removedPMIDsArray = [];
-
-    uniqueData.forEach((row) => {
-      const pmid = row.PMID ? String(row.PMID).trim() : "";
-      if (!pmid) return; // skip empty PMIDs
-
-      // Add every occurrence to Duplicate Hits
-      duplicatesData.push({
-        ...row,
-        "Processed Date": todayFormatted,
+      const today = new Date();
+      const todayFormatted = today.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
       });
 
-      // Only add the first occurrence to Unique Hits
-      if (!seen.has(pmid)) {
-        seen.add(pmid);
-        cleanedData.push({
-          SNO: cleanedData.length + 1,
-          "Received Date (DD MMM YYYY)":
-            row["Received Date (DD MMM YYYY)"] || todayFormatted,
-          PMID: pmid,
-          Title: row.Title, // include Title if needed
-        });
-      } else {
-        removedPMIDsArray.push(pmid); // track duplicates for UI
+      // Step 2️⃣: Group Unique Hits by PMID
+      const pmidMap = {};
+      uniqueData.forEach((row) => {
+        const pmid = row.PMID ? String(row.PMID).trim() : "";
+        if (!pmid) return;
+
+        if (!pmidMap[pmid]) pmidMap[pmid] = [];
+        pmidMap[pmid].push(row);
+      });
+
+      // Step 3️⃣: Identify duplicates — only move today's ones if multiple same PMIDs exist
+      const cleanedData = [];
+      const movedToDuplicate = [];
+
+      Object.keys(pmidMap).forEach((pmid) => {
+        const rows = pmidMap[pmid];
+
+        if (rows.length === 1) {
+          cleanedData.push(rows[0]);
+        } else {
+          const todayRows = rows.filter(
+            (r) => r["Received Date (DD MMM YYYY)"] === todayFormatted
+          );
+          const olderRows = rows.filter(
+            (r) => r["Received Date (DD MMM YYYY)"] !== todayFormatted
+          );
+
+          // Keep one old record (if any)
+          if (olderRows.length > 0) {
+            cleanedData.push(olderRows[0]);
+          } else {
+            // If all are from today, keep only one and move rest
+            cleanedData.push(todayRows[0]);
+            todayRows.shift();
+          }
+
+          todayRows.forEach((r) => {
+            movedToDuplicate.push({
+              ...r,
+              "Processed Date": todayFormatted,
+            });
+          });
+        }
+      });
+
+      // Step 4️⃣: Ensure today’s rows appear at the bottom of Unique Hits
+      const todayRows = cleanedData.filter(
+        (r) => r["Received Date (DD MMM YYYY)"] === todayFormatted
+      );
+      const nonTodayRows = cleanedData.filter(
+        (r) => r["Received Date (DD MMM YYYY)"] !== todayFormatted
+      );
+      const orderedCleanedData = [...nonTodayRows, ...todayRows];
+
+      // Step 5️⃣: Update Duplicate Hits with proper SNo
+      // Step 5️⃣: Rebuild Duplicate Hits with proper structure and SNo
+      const existingCount = duplicateData.length;
+
+      // Normalize column structure: ensure same columns for all rows
+      // const allColumns = [
+      //   "SNo",
+      //   "Received Date (DD MMM YYYY)",
+      //   "PMID",
+      //   "Processed Date",
+      // ];
+
+      const existingDupes = duplicateData.map((row, index) => ({
+        SNo: index + 1,
+        "Received Date (DD MMM YYYY)": row["Received Date (DD MMM YYYY)"] || "",
+        PMID: row.PMID || "",
+        "Processed Date": row["Processed Date"] || "",
+      }));
+
+      const newDupes = movedToDuplicate.map((row, index) => ({
+        SNo: existingCount + index + 1,
+        "Received Date (DD MMM YYYY)": row["Received Date (DD MMM YYYY)"] || todayFormatted,
+        PMID: row.PMID,
+        "Processed Date": todayFormatted,
+      }));
+
+      const updatedDuplicateData = [...existingDupes, ...newDupes];
+
+
+      // Step 6️⃣: Convert back to worksheets
+      const updatedUniqueWorksheet = XLSX.utils.json_to_sheet(orderedCleanedData);
+      const updatedDuplicateWorksheet = XLSX.utils.json_to_sheet(updatedDuplicateData);
+
+      // Step 7️⃣: Update workbook
+      const wbCopy = { SheetNames: [...workbook.SheetNames], Sheets: { ...workbook.Sheets } };
+      wbCopy.Sheets[uniqueSheetName] = updatedUniqueWorksheet;
+
+      if (!wbCopy.SheetNames.includes(duplicateSheetName)) {
+        wbCopy.SheetNames.push(duplicateSheetName);
       }
-    });
+      wbCopy.Sheets[duplicateSheetName] = updatedDuplicateWorksheet;
 
-    // Update states
-    setRemovedPMIDs(removedPMIDsArray);
-    setTotalUniques(cleanedData.length);
-    console.log("Total Unique PMIDs Today:", totalUniques);
-  console.log("Removed PMIDs Today:", removedPMIDs);
-    setTodaysCleanedUniques(cleanedData);
-    setTodaysRemovedDuplicates(
-      removedPMIDsArray.map((pmid) =>
-        duplicatesData.find((row) => row.PMID === pmid) || { PMID: pmid }
-      )
-    );
+      // Step 8️⃣: Download updated workbook
+      const updatedExcel = XLSX.write(wbCopy, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([updatedExcel], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      saveAs(blob, "Cleaned_Unique_Hits.xlsx");
 
-    // Convert back to worksheets
-    const updatedUniqueWorksheet = XLSX.utils.json_to_sheet(cleanedData, { skipHeader: false });
-    const updatedDuplicateWorksheet = XLSX.utils.json_to_sheet(duplicatesData, { skipHeader: false });
+      // Step 9️⃣: Compute today's stats
+      const todaysUniqueCount = orderedCleanedData.filter(
+        (r) => r["Received Date (DD MMM YYYY)"] === todayFormatted
+      ).length;
 
-    // Replace sheets in workbook
-    const wbCopy = { SheetNames: [...workbook.SheetNames], Sheets: { ...workbook.Sheets } };
-    wbCopy.Sheets[uniqueSheetName] = updatedUniqueWorksheet;
+      const todaysDuplicateCount = movedToDuplicate.length;
 
-    if (!wbCopy.SheetNames.includes(duplicateSheetName)) {
-      wbCopy.SheetNames.push(duplicateSheetName);
+      // Step 🔟: Update states
+      setWorkbook(wbCopy);
+      setRemovedPMIDs(movedToDuplicate.map((r) => r.PMID));
+      setTotalUniques(orderedCleanedData.length);
+      setTodaysCleanedUniques(orderedCleanedData);
+      setTodaysRemovedDuplicates(movedToDuplicate);
+      setTodayRemovedPMIDs(movedToDuplicate.map((r) => r.PMID));
+      setTodaysUniqueCount(todaysUniqueCount);
+      setTodaysDuplicateCount(todaysDuplicateCount);
+      console.log("Today's Date:", removedPMIDs);
+      console.log("Today's Date:", totalUniques);
+      console.log("Today's Date:", todaysCleanedUniques);
+      console.log("Today's Date:", todaysRemovedDuplicates);
+      alert(
+        `✅ File updated successfully!\nMoved ${todaysDuplicateCount} duplicate PMIDs to Duplicate Hits.\nToday's Unique Count: ${todaysUniqueCount}`
+      );
+
+      console.log("Moved to Duplicate:", movedToDuplicate);
+      console.log("Cleaned Data (Unique Hits):", orderedCleanedData);
+      console.log("Today's Unique Count:", todaysUniqueCount);
+      console.log("Today's Duplicate Count:", todaysDuplicateCount);
+    } catch (error) {
+      console.error("Error cleaning Unique Hits:", error);
+      alert("An error occurred while cleaning Unique Hits. Check console for details.");
     }
-    wbCopy.Sheets[duplicateSheetName] = updatedDuplicateWorksheet;
-
-    // Write the updated workbook
-    const updatedExcel = XLSX.write(wbCopy, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([updatedExcel], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    saveAs(blob, "Cleaned_Unique_Hits.xlsx");
-
-    alert(
-      `Cleaned Unique Hits file has been downloaded successfully!\nTotal PMIDs added to Duplicate Hits: ${duplicatesData.length}`
-    );
-
-    // Update workbook state
-    setWorkbook(wbCopy);
-    setTodayRemovedPMIDs(removedPMIDsArray);
-
-  } catch (error) {
-    console.error("Error cleaning Unique Hits:", error);
-    alert("An error occurred while cleaning Unique Hits. Check the console for details.");
-  }
-};
+  };
 
 
   // // Helper to parse DD MMM YYYY
@@ -484,7 +496,7 @@ function App() {
                 </Grid>
               </Grid>
             </Box>
-         {/* Uploaded Files Section */}
+            {/* Uploaded Files Section */}
             <div>
               <h3>Uploaded Files:</h3>
               {uploadedFiles.length > 0 ? (
@@ -505,8 +517,8 @@ function App() {
             <p>Non-Duplicate Rows: <strong>{nonDuplicateRows.length}</strong></p>
             <p>Removed PMIDs: <strong>{removedTodayPMIS.length}</strong></p>
             {/* <p>Duplicate Hits from the Master tracker: <strong>{todaysRemovedPMIDs.length}</strong></p> */}
-            <p>Total duplicates:<strong>{todaysRemovedDuplicates.length}</strong> </p>
-            <p>Total Uniques : <strong>{todaysCleanedUniques.length}</strong></p>
+            <p>Total duplicates:<strong>{todaysDuplicateCount}</strong> </p>
+            <p>Total Uniques : <strong>{todaysUniqueCount}</strong></p>
 
             {/* Upload Master Tracker Section */}
             <h3>Upload Master Tracker File (Excel)</h3>
