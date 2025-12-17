@@ -467,6 +467,147 @@ function App() {
     exportToCsv(csvData, "combined_CSV_Data.csv");
   };
 
+  const generateTodaysAssessmentCSV = () => {
+  if (!csvData.length) {
+    alert("Please upload Combined CSV files first.");
+    return;
+  }
+
+  if (!workbook) {
+    alert("Please upload and process the Master Tracker first.");
+    return;
+  }
+
+  const uniqueSheetName = "Unique Hits";
+  const uniqueWorksheet = workbook.Sheets[uniqueSheetName];
+
+  if (!uniqueWorksheet) {
+    alert("Unique Hits sheet not found in Master Tracker.");
+    return;
+  }
+
+  // Format today's date → DD MMM YYYY
+  const todayFormatted = new Date().toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
+  // 1️⃣ Read Unique Hits
+  const uniqueHitsData = XLSX.utils.sheet_to_json(uniqueWorksheet, { defval: "" });
+
+  // 2️⃣ Get TODAY PMIDs
+  const todaysPMIDs = uniqueHitsData
+    .filter(
+      row =>
+        row["Received Date (DD MMM YYYY)"] === todayFormatted &&
+        row["PMID"]
+    )
+    .map(row => String(row["PMID"]).trim());
+
+  if (!todaysPMIDs.length) {
+    alert("No today's PMIDs found in Unique Hits.");
+    return;
+  }
+
+  // 3️⃣ Assessment file headers (EXACT order)
+  const assessmentHeaders = [
+    "Sr.No",
+    "Received Date (DD MMM YYYY)",
+    "Article title",
+    "Citation Details",
+    "Reference ID",
+    "DOI",
+    "Initial Reviewer Name",
+    "Initial Review Date",
+    "Abstract/Full Text Article (FTA)",
+    "Article Classification",
+    "Initial Review Comment",
+    "Quality Reviewer Name",
+    "Quality Review Date",
+    "Quality Review Comment",
+    "Full Text Request Raised (Order ID)",
+    "Translation Request Raised (Order ID)",
+    "Article Priority",
+    "Country Of Incidence",
+    "Valid Drugs",
+    "Invalid Drugs",
+    "Suspected Events",
+    "No. of cases to be created",
+    "Allocation Sent",
+    "Case ID",
+    "Reference number for Aggregate report as applicable",
+    "Reference number for Signal report as applicable",
+    "Additional Comments (if any)"
+  ];
+
+  // 4️⃣ Map Combined CSV → Assessment rows
+// 4️⃣ Map Unique PMIDs → ONE Combined CSV row per PMID
+let srNo = 1;
+
+const assessmentData = todaysPMIDs.map(pmid => {
+  const matchedRow = csvData.find(
+    row => String(row.PMID).trim() === pmid
+  );
+
+  if (!matchedRow) return null; // safety
+
+  return {
+    "Sr.No": srNo++,
+    "Received Date (DD MMM YYYY)": todayFormatted,
+
+    // ✅ Mapping
+    "Reference ID": matchedRow.PMID || "",
+    "Article title": matchedRow.Title || "",
+    "DOI": matchedRow.DOI || "",
+    "Citation Details":
+      matchedRow["Citation"] ||
+      matchedRow["Citation Details"] ||
+      "",
+
+    // Remaining columns empty
+    "Initial Reviewer Name": "",
+    "Initial Review Date": "",
+    "Abstract/Full Text Article (FTA)": "",
+    "Article Classification": "",
+    "Initial Review Comment": "",
+    "Quality Reviewer Name": "",
+    "Quality Review Date": "",
+    "Quality Review Comment": "",
+    "Full Text Request Raised (Order ID)": "",
+    "Translation Request Raised (Order ID)": "",
+    "Article Priority": "",
+    "Country Of Incidence": "",
+    "Valid Drugs": "",
+    "Invalid Drugs": "",
+    "Suspected Events": "",
+    "No. of cases to be created": "",
+    "Allocation Sent": "",
+    "Case ID": "",
+    "Reference number for Aggregate report as applicable": "",
+    "Reference number for Signal report as applicable": "",
+    "Additional Comments (if any)": ""
+  };
+}).filter(Boolean); // remove nulls
+
+  if (!assessmentData.length) {
+    alert("No matching records found in Combined CSV for today's PMIDs.");
+    return;
+  }
+
+  // 5️⃣ Export CSV with fixed headers
+  const csv = Papa.unparse({
+    fields: assessmentHeaders,
+    data: assessmentData
+  });
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  saveAs(blob, `Todays_Assessment_${todayFormatted.replace(/ /g, "_")}.csv`);
+
+  alert(`✅ Today's Assessment file generated successfully!\nRecords: ${assessmentData.length}`);
+};
+
+
   return (
     <div className="App">
       <Grid container spacing={3}>
@@ -564,6 +705,16 @@ function App() {
                     Download Uploaded CSV
                   </Button>
                 </Grid>
+                <Grid item xs={4}>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    onClick={generateTodaysAssessmentCSV}
+                  >
+                    Get Today’s Assessment Data
+                  </Button>
+                </Grid>
+
               </Grid>
             </Box>
           </div>
