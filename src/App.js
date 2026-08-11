@@ -21,6 +21,8 @@ function App() {
   const [removedPMIDs, setRemovedPMIDs] = useState([]); // State to store removed PMIDs
   //const [todaysRemovedPMIDs, setTodaysRemovedPMIDs] = useState([]); // State to store today's removed PMIDs
   const [totalUniques, setTotalUniques] = useState(0);
+  const [trackerDuplicateCount, setTrackerDuplicateCount] = useState(0);
+  const [finalUniqueHitCount, setFinalUniqueHitCount] = useState(0);
   //const [combinedData, setCombinedData] = useState([]); // State to store combined data
   //const [totalUniqueHits, setTotalUniqueHits] = useState([]);
   const [todaysCleanedUniques, setTodaysCleanedUniques] = useState([]);
@@ -149,6 +151,20 @@ function App() {
             return null;
           };
 
+          const getExistingTrackerPmids = () => {
+            const pmids = new Set();
+            ["Duplicate Hits", "Unique Hits"].forEach((sheetName) => {
+              const sheet = workbook.Sheets[sheetName];
+              if (!sheet) return;
+              const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+              rows.forEach((row) => {
+                const pmid = row.PMID ? String(row.PMID).trim() : "";
+                if (pmid) pmids.add(pmid);
+              });
+            });
+            return pmids;
+          };
+
           const appendData = (sheetName, rows, allowDuplicates = false) => {
             const worksheet =
               workbook.Sheets[sheetName] ||
@@ -161,13 +177,12 @@ function App() {
               SNO: row.SNO || "",
               "Received Date (DD MMM YYYY)": row["Received Date (DD MMM YYYY)"]
                 ? formatDate(row["Received Date (DD MMM YYYY)"])
-                : today,
+                : "",
               PMID: row.PMID || "",
             }));
 
             const lastSno = sheetData.length > 0 ? parseInt(sheetData[sheetData.length - 1].SNO) || 0 : 0;
 
-            // ✅ Append new rows (optionally allow duplicates)
             rows.forEach((row, index) => {
               if (allowDuplicates || !sheetData.some((r) => r.PMID === row.PMID)) {
                 sheetData.push({
@@ -180,7 +195,6 @@ function App() {
               }
             });
 
-            // Re-number SNO column
             sheetData.forEach((row, index) => {
               row.SNO = index + 1;
             });
@@ -188,13 +202,32 @@ function App() {
             return XLSX.utils.json_to_sheet(sheetData, { skipHeader: false });
           };
 
-          // ✅ Process Duplicate Hits (allow duplicates)
           const duplicateSheetName = "Duplicate Hits";
-          const updatedDuplicateWorksheet = appendData(duplicateSheetName, duplicateRows, true);
-
-          // ✅ Process Unique Hits (do NOT allow duplicates)
           const uniqueSheetName = "Unique Hits";
-          const updatedUniqueWorksheet = appendData(uniqueSheetName, nonDuplicateRows, false);
+          const existingTrackerPmids = getExistingTrackerPmids();
+
+          const duplicateRowsToAppend = duplicateRows.filter((row) => {
+            const pmid = row.PMID?.toString().trim();
+            return pmid;
+          });
+
+          const uniqueRowsToAppend = nonDuplicateRows.filter((row) => {
+            const pmid = row.PMID?.toString().trim();
+            return pmid && !existingTrackerPmids.has(pmid);
+          });
+
+          const addedTrackerDuplicateCount = nonDuplicateRows.length - uniqueRowsToAppend.length;
+          setTrackerDuplicateCount(addedTrackerDuplicateCount);
+          setFinalUniqueHitCount(uniqueRowsToAppend.length);
+          setTotalUniques(uniqueRowsToAppend.length);
+          setTodaysUniqueCount(uniqueRowsToAppend.length);
+          setTodaysDuplicateCount(addedTrackerDuplicateCount);
+
+          const updatedDuplicateWorksheet = appendData(duplicateSheetName, duplicateRowsToAppend, true);
+          const updatedUniqueWorksheet = appendData(uniqueSheetName, uniqueRowsToAppend, false);
+
+          const addedDuplicateCount = duplicateRowsToAppend.length;
+          const addedUniqueCount = uniqueRowsToAppend.length;
 
           // ✅ Create a new workbook and append updated sheets
           const updatedWorkbook = XLSX.utils.book_new();
@@ -208,7 +241,9 @@ function App() {
           });
 
           saveAs(blob, "Updated_Master_Tracker.xlsx");
-          alert("✅ All duplicates and unique records added to Master Tracker successfully!");
+          alert(
+            `✅ Master Tracker updated successfully!\nAdded ${addedDuplicateCount} duplicate row(s) to Duplicate Hits.\nAdded ${addedUniqueCount} unique row(s) to Unique Hits.`
+          );
         } catch (innerError) {
           console.error("Error processing the Excel file:", innerError);
           alert("An error occurred while processing the Excel file. Check the console for details.");
@@ -660,10 +695,9 @@ const assessmentData = todaysPMIDs.map(pmid => {
             <p>Total Rows Processed: <strong>{csvData.length}</strong></p>
             <p>Duplicate Rows: <strong>{duplicateRows.length}</strong></p>
             <p>Non-Duplicate Rows: <strong>{nonDuplicateRows.length}</strong></p>
-            <p>Removed PMIDs: <strong>{removedTodayPMIS.length}</strong></p>
-            {/* <p>Duplicate Hits from the Master tracker: <strong>{todaysRemovedPMIDs.length}</strong></p> */}
-            <p>Total duplicates:<strong>{todaysDuplicateCount}</strong> </p>
-            <p>Total Uniques : <strong>{todaysUniqueCount}</strong></p>
+            {/* <p>Removed PMIDs: <strong>{removedTodayPMIS.length}</strong></p> */}
+            <p>Removed duplicates from Unique Hits: <strong>{trackerDuplicateCount}</strong></p>
+            <p>Total Unique Hits: <strong>{finalUniqueHitCount}</strong></p>
 
             {/* Upload Master Tracker Section */}
             <h3>Upload Master Tracker File (Excel)</h3>
